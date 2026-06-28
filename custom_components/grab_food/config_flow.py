@@ -25,6 +25,14 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+STEP_TOKEN_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ACCESS_TOKEN): str,
+        vol.Optional(CONF_REFRESH_TOKEN, default=""): str,
+    }
+)
+
+# Kept for possible future use but not exposed from the main user flow.
 STEP_PHONE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_COUNTRY_CODE, default=DEFAULT_COUNTRY_CODE): str,
@@ -35,15 +43,6 @@ STEP_PHONE_SCHEMA = vol.Schema(
 STEP_OTP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_OTP): str,
-    }
-)
-
-STEP_TOKEN_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_ACCESS_TOKEN): str,
-        vol.Optional(CONF_REFRESH_TOKEN, default=""): str,
-        vol.Optional(CONF_PHONE, default=""): str,
-        vol.Optional(CONF_COUNTRY_CODE, default=DEFAULT_COUNTRY_CODE): str,
     }
 )
 
@@ -58,19 +57,86 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
         self._phone: str = ""
         self._country_code: str = DEFAULT_COUNTRY_CODE
         self._client: GrabFoodApiClient | None = None
+        self._is_reauth: bool = False
+        self._reauth_entry_id: str | None = None
 
-    # ── Entry point: choose auth method ──────────────────────────────────
+    # ── Entry point ───────────────────────────────────────────────────────
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Show menu: OTP login or manual token."""
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=["phone", "token"],
+        """Go directly to the browser-token step.
+
+        OTP phone login is not exposed here because Grab's API currently
+        requires an undocumented clientId from the official mobile app.
+        """
+        return await self.async_step_token()
+
+    # ── Browser token flow ────────────────────────────────────────────────
+
+    async def async_step_token(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Paste access_token extracted from food.grab.com browser storage."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            access_token = user_input[CONF_ACCESS_TOKEN].strip()
+            refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
+
+            if not self._is_reauth:
+                uid = f"grab_food_token_{access_token[:16]}"
+                await self.async_set_unique_id(uid)
+                self._abort_if_unique_id_configured()
+
+            session = async_get_clientsession(self.hass)
+            client = GrabFoodApiClient(
+                session=session,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_expiry=time.time() + 3600,
+            )
+
+            try:
+                await client.get_active_orders()
+            except GrabAuthError:
+                errors["base"] = "invalid_token"
+            except GrabApiError as err:
+                _LOGGER.warning("Token check API error (continuing): %s", err)
+            except Exception:
+                _LOGGER.exception("Unexpected error during token validation")
+                errors["base"] = "cannot_connect"
+
+            if not errors:
+                entry_data = {
+                    CONF_PHONE: self._phone,
+                    CONF_COUNTRY_CODE: self._country_code,
+                    CONF_ACCESS_TOKEN: access_token,
+                    CONF_REFRESH_TOKEN: refresh_token,
+                    CONF_TOKEN_EXPIRY: client.token_expiry,
+                }
+
+                if self._is_reauth:
+                    existing = self.hass.config_entries.async_get_entry(
+                        self._reauth_entry_id
+                    )
+                    return self.async_update_reload_and_abort(
+                        existing,
+                        data_updates=entry_data,
+                    )
+
+                return self.async_create_entry(
+                    title="Grab Food (token)",
+                    data=entry_data,
+                )
+
+        return self.async_show_form(
+            step_id="token",
+            data_schema=STEP_TOKEN_SCHEMA,
+            errors=errors,
         )
 
-    # ── OTP flow ─────────────────────────────────────────────────────────
+    # ── OTP flow (internal — not reachable from user step) ────────────────
 
     async def async_step_phone(
         self, user_input: dict[str, Any] | None = None
@@ -126,15 +192,26 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             except GrabAuthError:
                 errors["base"] = "invalid_otp"
             else:
+                entry_data = {
+                    CONF_PHONE: self._phone,
+                    CONF_COUNTRY_CODE: self._country_code,
+                    CONF_ACCESS_TOKEN: token_data["access_token"],
+                    CONF_REFRESH_TOKEN: token_data.get("refresh_token", ""),
+                    CONF_TOKEN_EXPIRY: self._client.token_expiry,
+                }
+
+                if self._is_reauth:
+                    existing = self.hass.config_entries.async_get_entry(
+                        self._reauth_entry_id
+                    )
+                    return self.async_update_reload_and_abort(
+                        existing,
+                        data_updates=entry_data,
+                    )
+
                 return self.async_create_entry(
                     title=f"Grab Food ({self._country_code}{self._phone})",
-                    data={
-                        CONF_PHONE: self._phone,
-                        CONF_COUNTRY_CODE: self._country_code,
-                        CONF_ACCESS_TOKEN: token_data["access_token"],
-                        CONF_REFRESH_TOKEN: token_data.get("refresh_token", ""),
-                        CONF_TOKEN_EXPIRY: self._client.token_expiry,
-                    },
+                    data=entry_data,
                 )
 
         return self.async_show_form(
@@ -146,82 +223,14 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    # ── Manual token flow ─────────────────────────────────────────────────
-
-    async def async_step_token(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Alternative: paste access_token extracted from browser/app."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            access_token = user_input[CONF_ACCESS_TOKEN].strip()
-            refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
-            phone = user_input.get(CONF_PHONE, "").strip().lstrip("0")
-            country_code = user_input.get(CONF_COUNTRY_CODE, DEFAULT_COUNTRY_CODE).strip()
-
-            uid = f"grab_food_{country_code}{phone}" if phone else f"grab_food_token_{access_token[:16]}"
-            await self.async_set_unique_id(uid)
-            self._abort_if_unique_id_configured()
-
-            session = async_get_clientsession(self.hass)
-            client = GrabFoodApiClient(
-                session=session,
-                access_token=access_token,
-                refresh_token=refresh_token,
-                # Set expiry far in the future; coordinator will refresh as needed
-                token_expiry=time.time() + 3600,
-            )
-
-            # Quick connectivity check
-            try:
-                await client.get_active_orders()
-            except GrabAuthError:
-                errors["base"] = "invalid_token"
-            except GrabApiError as err:
-                _LOGGER.warning("Token check API error (continuing anyway): %s", err)
-            except Exception:
-                errors["base"] = "cannot_connect"
-
-            if not errors:
-                title = (
-                    f"Grab Food ({country_code}{phone})"
-                    if phone
-                    else "Grab Food (token)"
-                )
-                return self.async_create_entry(
-                    title=title,
-                    data={
-                        CONF_PHONE: phone,
-                        CONF_COUNTRY_CODE: country_code,
-                        CONF_ACCESS_TOKEN: access_token,
-                        CONF_REFRESH_TOKEN: refresh_token,
-                        CONF_TOKEN_EXPIRY: client.token_expiry,
-                    },
-                )
-
-        return self.async_show_form(
-            step_id="token",
-            data_schema=STEP_TOKEN_SCHEMA,
-            errors=errors,
-        )
-
     # ── Reauth ────────────────────────────────────────────────────────────
 
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
-        """Handle re-authentication when tokens expire permanently."""
+        """Handle re-authentication — update the existing entry, not create a new one."""
+        self._is_reauth = True
+        self._reauth_entry_id = self.context["entry_id"]
         self._phone = entry_data.get(CONF_PHONE, "")
         self._country_code = entry_data.get(CONF_COUNTRY_CODE, DEFAULT_COUNTRY_CODE)
-        return await self.async_step_reauth_confirm()
-
-    async def async_step_reauth_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Confirm re-auth: choose OTP or paste a new token."""
-        return self.async_show_menu(
-            step_id="reauth_confirm",
-            menu_options=["phone", "token"],
-            description_placeholders={"phone": f"{self._country_code}{self._phone}"},
-        )
+        return await self.async_step_token()

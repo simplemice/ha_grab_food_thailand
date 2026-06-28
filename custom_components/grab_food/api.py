@@ -10,8 +10,6 @@ from typing import Any
 import aiohttp
 
 from .const import (
-    GRAB_API_BASE,
-    GRAB_FOOD_BASE,
     GRAB_ORDER_DETAIL,
     GRAB_ORDERS_ACTIVE,
     GRAB_ORDERS_HISTORY,
@@ -168,6 +166,11 @@ class GrabFoodApiClient:
         """Ensure the access token is valid, refreshing if needed."""
         async with self._lock:
             if time.time() >= (self.token_expiry - 60):
+                if not self.refresh_token:
+                    raise GrabAuthError(
+                        "Access token expired and no refresh token is available. "
+                        "Please re-authenticate via the integration settings."
+                    )
                 await self._refresh_access_token()
 
     def _auth_headers(self) -> dict[str, str]:
@@ -189,8 +192,13 @@ class GrabFoodApiClient:
                 params=params,
             ) as resp:
                 if resp.status == 401:
-                    # Token expired mid-request — retry once
-                    await self._refresh_access_token()
+                    # Token expired mid-request — refresh under lock, then retry once
+                    if not self.refresh_token:
+                        raise GrabAuthError(
+                            "Token rejected (401) and no refresh token available"
+                        )
+                    async with self._lock:
+                        await self._refresh_access_token()
                     async with self._session.get(
                         url,
                         headers=self._auth_headers(),

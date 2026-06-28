@@ -1,56 +1,25 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Grab Food Thailand",
-        "menu_options": {
-          "phone": "Login with phone number (OTP)",
-          "token": "Paste token from browser / app"
-        }
-      },
-      "phone": {
-        "title": "Grab Food — Phone Number",
-        "description": "Enter your Grab account phone number. An OTP will be sent via SMS.",
-        "data": {
-          "country_code": "Country code",
-          "phone_number": "Phone number (without leading 0)"
-        }
-      },
-      "otp": {
-        "title": "Grab Food — Verify OTP",
-        "description": "Enter the OTP code sent to {phone}",
-        "data": {
-          "otp": "OTP code"
-        }
-      },
       "token": {
-        "title": "Grab Food — Manual Token",
-        "description": "Open food.grab.com in your browser, log in, then open DevTools (F12) → Application → Local Storage → https://food.grab.com and copy the `access_token` value.",
+        "title": "Grab Food — Browser Token",
+        "description": "Open **[food.grab.com](https://food.grab.com)** in your browser and log in.\n\nThen press **F12** → **Application** tab → **Local Storage** → `https://food.grab.com` and copy the value of the `access_token` key.\n\nThe token is a long string starting with `eyJ…`.",
         "data": {
           "access_token": "Access token",
-          "refresh_token": "Refresh token (optional)",
-          "phone_number": "Phone number (optional, for display only)",
-          "country_code": "Country code (optional)"
-        }
-      },
-      "reauth_confirm": {
-        "title": "Grab Food — Re-authenticate",
-        "description": "Your Grab session for {phone} has expired. Choose how to re-authenticate.",
-        "menu_options": {
-          "phone": "Send a new OTP to {phone}",
-          "token": "Paste a new token"
+          "refresh_token": "Refresh token (optional — leave blank if not available)"
         }
       }
     },
     "error": {
-      "otp_send_failed": "Grab rejected the OTP request. Check the phone number and country code, then check the Home Assistant log for the full API error.",
       "cannot_connect": "Could not reach Grab servers. Check your internet connection and try again.",
+      "invalid_token": "The token was rejected by Grab. Make sure you copied the full `access_token` value.",
       "invalid_otp": "Invalid OTP code. Please try again.",
-      "invalid_token": "The token was rejected by Grab. Make sure you copied the full access_token value.",
+      "otp_send_failed": "Grab rejected the OTP request. Check the phone number and country code.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This Grab account is already configured."
+      "already_configured": "This Grab account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "entity": {

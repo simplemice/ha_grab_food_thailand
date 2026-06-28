@@ -42,7 +42,6 @@ SENSOR_DRIVER_NAME = "driver_name"
 SENSOR_DRIVER_PLATE = "driver_plate"
 SENSOR_ITEM_COUNT = "item_count"
 SENSOR_ORDER_ID = "order_id"
-SENSOR_LAST_ORDER_STATUS = "last_order_status"
 SENSOR_DELIVERY_ADDRESS = "delivery_address"
 
 # ── Order states ─────────────────────────────────────────────────────────────
