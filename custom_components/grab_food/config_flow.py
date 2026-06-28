@@ -8,17 +8,14 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GrabApiError, GrabAuthError, GrabFoodApiClient
 from .const import (
     CONF_ACCESS_TOKEN,
-    CONF_COUNTRY_CODE,
-    CONF_PHONE,
     CONF_REFRESH_TOKEN,
     CONF_TOKEN_EXPIRY,
-    DEFAULT_COUNTRY_CODE,
     DOMAIN,
 )
 
@@ -37,20 +34,16 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    def __init__(self) -> None:
-        """Initialize."""
-        self._is_reauth: bool = False
-        self._reauth_entry_id: str | None = None
-
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Show the access-token form and validate on submit."""
         errors: dict[str, str] = {}
+        is_reauth = self.source == SOURCE_REAUTH
 
         if user_input is not None:
             access_token = user_input[CONF_ACCESS_TOKEN].strip()
             refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
 
-            if not self._is_reauth:
+            if not is_reauth:
                 uid = f"grab_food_{access_token[:20]}"
                 await self.async_set_unique_id(uid)
                 self._abort_if_unique_id_configured()
@@ -75,19 +68,14 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 entry_data = {
-                    CONF_PHONE: "",
-                    CONF_COUNTRY_CODE: DEFAULT_COUNTRY_CODE,
                     CONF_ACCESS_TOKEN: access_token,
                     CONF_REFRESH_TOKEN: refresh_token,
                     CONF_TOKEN_EXPIRY: client.token_expiry,
                 }
 
-                if self._is_reauth:
-                    existing = self.hass.config_entries.async_get_entry(
-                        self._reauth_entry_id
-                    )
+                if is_reauth:
                     return self.async_update_reload_and_abort(
-                        existing,
+                        self._get_reauth_entry(),
                         data_updates=entry_data,
                     )
 
@@ -101,6 +89,4 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, entry_data: dict[str, Any]):
         """Handle re-auth: update existing entry, never create a duplicate."""
-        self._is_reauth = True
-        self._reauth_entry_id = self.context["entry_id"]
         return await self.async_step_user()
