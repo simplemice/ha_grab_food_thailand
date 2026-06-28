@@ -1,0 +1,52 @@
+"""Grab Food Thailand integration for Home Assistant."""
+
+from __future__ import annotations
+
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .api import GrabFoodApiClient
+from .const import (
+    CONF_ACCESS_TOKEN,
+    CONF_REFRESH_TOKEN,
+    CONF_TOKEN_EXPIRY,
+    DOMAIN,
+)
+from .coordinator import GrabFoodCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Grab Food Thailand from a config entry."""
+    session = async_get_clientsession(hass)
+
+    client = GrabFoodApiClient(
+        session=session,
+        access_token=entry.data.get(CONF_ACCESS_TOKEN),
+        refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
+        token_expiry=entry.data.get(CONF_TOKEN_EXPIRY, 0),
+    )
+
+    coordinator = GrabFoodCoordinator(hass, client, entry)
+    # async_config_entry_first_refresh converts UpdateFailed → ConfigEntryNotReady
+    # and propagates ConfigEntryAuthFailed as-is for the reauth flow.
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a Grab Food config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+    return unload_ok

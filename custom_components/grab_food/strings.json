@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Grab Food — Phone Number",
+        "description": "Enter your Grab account phone number. An OTP will be sent via SMS.",
+        "data": {
+          "country_code": "Country code",
+          "phone_number": "Phone number (without leading 0)"
+        }
+      },
+      "otp": {
+        "title": "Grab Food — Verify OTP",
+        "description": "Enter the OTP code sent to {phone}",
+        "data": {
+          "otp": "OTP code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Grab Food — Re-authenticate",
+        "description": "Your Grab session has expired. A new OTP will be sent to {phone}."
+      }
+    },
+    "error": {
+      "otp_send_failed": "Failed to send OTP. Check the phone number and try again.",
+      "invalid_otp": "Invalid OTP code. Please try again.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Grab account is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "order_status": {
+        "name": "Order Status",
+        "state": {
+          "no_active_order": "No Active Order",
+          "placed": "Placed",
+          "confirmed": "Confirmed",
+          "preparing": "Preparing",
+          "driver_assigned": "Driver Assigned",
+          "picked_up": "Picked Up",
+          "delivering": "Delivering",
+          "delivered": "Delivered",
+          "cancelled": "Cancelled"
+        }
+      },
+      "restaurant_name": { "name": "Restaurant" },
+      "order_total": { "name": "Order Total" },
+      "estimated_delivery": { "name": "Estimated Delivery" },
+      "driver_name": { "name": "Driver" },
+      "driver_plate": { "name": "Driver Plate" },
+      "item_count": { "name": "Items Ordered" },
+      "order_id": { "name": "Order ID" },
+      "delivery_address": { "name": "Delivery Address" }
+    }
+  }
+}
