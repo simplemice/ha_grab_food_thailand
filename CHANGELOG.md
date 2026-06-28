@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.12] - 2026-06-28
+
+### add brand icons and screenshot
+
+
 ## [1.0.11] - 2026-06-28
 
 ### docs: replace browser token method with HTTPCanary step-by-step guide
