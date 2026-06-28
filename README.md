@@ -10,11 +10,11 @@ Track your active Grab Food Thailand orders directly inside Home Assistant — o
 
 ## Features
 
-- **OTP authentication** — sign in with your Grab phone number via SMS
+- **Browser token authentication** — copy your token from food.grab.com (no app needed)
 - **9 sensors** covering the full order lifecycle
 - **Adaptive polling** — 30 s while an order is active, 5 min when idle
 - **Automatic token refresh** — sessions persist across Home Assistant restarts
-- **Reauth flow** — triggered automatically when tokens expire permanently
+- **Reauth flow** — triggered automatically when tokens expire
 - **HACS ready** — one-click install via HACS custom repository
 
 ---
@@ -42,11 +42,29 @@ Or manually:
 
 ## Setup
 
+### Step 1 — Get your Grab token from the browser
+
+1. Open **[food.grab.com](https://food.grab.com)** in Chrome or Firefox
+2. Log in with your Grab account (phone + OTP via the website)
+3. Press **F12** to open DevTools
+4. Go to **Application** tab → **Local Storage** → `https://food.grab.com`
+5. Find the key `access_token` and copy its full value
+
+> **Tip:** The token is a long string starting with `eyJ...`. Copy the entire value — it can be several hundred characters long.
+
+### Step 2 — Add the integration in Home Assistant
+
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Grab Food Thailand**
-3. Enter your country code (`+66` for Thailand) and phone number (without leading `0`)
-4. Enter the OTP received via SMS
-5. All sensors appear under a single **Grab Food** device
+3. Choose **"Paste token from browser / app"**
+4. Paste your `access_token` into the **Access token** field
+5. Click **Submit** — all sensors appear under a **Grab Food** device
+
+### Token expiry & reauth
+
+When the token expires, Home Assistant will show a notification to re-authenticate. Open the integration, choose your preferred method, and paste a fresh token from the browser.
+
+> **Note on OTP login:** The integration also includes a phone/OTP login option, but Grab's API currently requires an undocumented `clientId` from the official mobile app to accept OTP requests. Use the browser token method above — it works reliably.
 
 ---
 
@@ -114,10 +132,9 @@ action:
         ({{ states('sensor.grab_food_item_count') }} items)
 ```
 
-### Show driver location on a map card
+### Show driver on a map card
 
 ```yaml
-# In your Lovelace dashboard
 type: map
 entities:
   - entity: sensor.grab_food_driver_name
@@ -131,7 +148,7 @@ entities:
 ## Architecture
 
 ```
-config_flow.py  →  Phone number → OTP → tokens stored in config entry
+config_flow.py  →  Menu: browser token OR phone OTP → tokens stored in config entry
 __init__.py     →  Creates API client + coordinator; forwards to platforms
 coordinator.py  →  Polls Grab API, adaptive interval, persists refreshed tokens
 sensor.py       →  9 CoordinatorEntity sensors with extra state attributes
@@ -142,10 +159,10 @@ api.py          →  Async Grab API client (auth, token refresh, order fetch)
 
 ## Important notes
 
-- **Unofficial API** — this integration uses Grab's internal mobile API. Endpoints and field names can change without notice; see `const.py` and `coordinator.py` if adjustments are needed.
+- **Unofficial API** — this integration uses Grab's internal mobile API. Endpoints and field names can change without notice.
 - **Rate limiting** — Grab may throttle aggressive polling. The defaults (30 s active / 5 min idle) are intentionally conservative.
 - **One active order** — Grab Food only allows one active food order at a time; the integration always tracks the first one returned.
-- **Thailand only** — default country code is `+66`; the country selector in the config flow accepts other codes if needed.
+- **Thailand focus** — default country code is `+66`; the token method works regardless of country.
 
 ---
 
