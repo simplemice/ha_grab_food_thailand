@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.14] - 2026-06-28
+
+### add screenshots
+
+
 ## [1.0.13] - 2026-06-28
 
 ### fix: move brand folder inside integration directory, resize icons to spec
