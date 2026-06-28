@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.5] - 2026-06-28
+
+### fix autorization and other bugs
+
+
 ## [1.0.4] - 2026-06-28
 
 ### fix autorization and other bugs
