@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.7] - 2026-06-28
+
+### fix: collapse config flow to single user step, fix 500 error
+
+async_step_user now owns the token form directly with step_id='user'.
+Previous design redirected user->token step which caused a step_id
+mismatch that HA flow loader rejected with 500. Removed async_step_token
+and ConfigFlowResult import; strings.json now has one step (user) with
+the token fields, matching exactly what the code shows.
+
+
 ## [1.0.6] - 2026-06-28
 
 ### fix: remove phone/OTP flow, fix config flow 500 error
