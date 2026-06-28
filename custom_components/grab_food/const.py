@@ -22,7 +22,6 @@ GRAB_ORDER_DETAIL = f"{GRAB_FOOD_BASE}/v2/orders"  # + /{order_id}
 # ── Config keys ──────────────────────────────────────────────────────────────
 CONF_PHONE = "phone_number"
 CONF_COUNTRY_CODE = "country_code"
-CONF_OTP = "otp"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_TOKEN_EXPIRY = "token_expiry"

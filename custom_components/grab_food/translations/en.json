@@ -1,19 +1,22 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Grab Food Thailand"
+      },
       "token": {
         "title": "Grab Food — Access Token",
-        "description": "Paste your Grab access token below. You can get it from either source:\n\n**Browser (Chrome/Firefox):**\nOpen food.grab.com → log in → press F12 → Application → Local Storage → `https://food.grab.com` → copy `access_token`.\n\n**Android (HTTPCanary / Charles / mitmproxy):**\nOpen the Grab app → intercept any request → copy the value after `Authorization: Bearer ` in the request headers.\n\nThe token is a long string starting with `eyJ…`.",
+        "description": "Paste your Grab access token. You can get it two ways:\n\n**Browser (Chrome/Firefox):** Open food.grab.com → log in → F12 → Application → Local Storage → `https://food.grab.com` → copy `access_token`.\n\n**Android (HTTPCanary / Charles):** Open the Grab app → intercept any request → copy the value after `Authorization: Bearer ` in the request headers.\n\nThe token starts with `eyJ`.",
         "data": {
-          "access_token": "Access token (starts with eyJ…)",
-          "refresh_token": "Refresh token (optional — leave blank if not available)"
+          "access_token": "Access token",
+          "refresh_token": "Refresh token (optional)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not reach Grab servers. Check your internet connection and try again.",
-      "invalid_token": "The token was rejected by Grab. Make sure you copied the full token value (starting with eyJ…) with no extra spaces.",
-      "unknown": "An unexpected error occurred."
+      "cannot_connect": "Could not reach Grab servers. Check your internet connection.",
+      "invalid_token": "Token rejected by Grab. Copy the full value starting with eyJ with no extra spaces.",
+      "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This Grab account is already configured.",
