@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.13] - 2026-06-28
+
+### fix: move brand folder inside integration directory, resize icons to spec
+
+Per HA 2026 brands proxy API, brand/ must live inside
+custom_components/grab_food/ not the repo root.
+Also resize icon.png to 256x256 RGBA and add @2x (512x512) variants.
+logo.png resized to 256px wide with @2x variant.
+
+
 ## [1.0.12] - 2026-06-28
 
 ### add brand icons and screenshot
