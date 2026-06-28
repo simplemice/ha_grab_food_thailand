@@ -1,12 +1,16 @@
 {
   "domain": "grab_food",
   "name": "Grab Food Thailand",
-  "codeowners": ["@simplemice"],
+  "codeowners": [
+    "@simplemice"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/simplemice/ha-grab-food",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/simplemice/ha-grab-food/issues",
-  "requirements": ["aiohttp>=3.8.0"],
-  "version": "1.0.0"
+  "requirements": [
+    "aiohttp>=3.8.0"
+  ],
+  "version": "1.0.1"
 }

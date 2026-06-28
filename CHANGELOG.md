@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.1] - 2026-06-28
+
+### Initial commit
+
+### Temporarily remove workflow
+
+### Initial commit
+
+
 ## [1.0.0] - 2026-06-28
 
 ### Initial release
