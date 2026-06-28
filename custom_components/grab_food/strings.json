@@ -2,11 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Grab Food Thailand"
-      },
-      "token": {
-        "title": "Grab Food — Access Token",
-        "description": "Paste your Grab access token. You can get it two ways:\n\n**Browser (Chrome/Firefox):** Open food.grab.com → log in → F12 → Application → Local Storage → `https://food.grab.com` → copy `access_token`.\n\n**Android (HTTPCanary / Charles):** Open the Grab app → intercept any request → copy the value after `Authorization: Bearer ` in the request headers.\n\nThe token starts with `eyJ`.",
+        "title": "Grab Food Thailand",
+        "description": "Paste your Grab access token.\n\n**Browser:** food.grab.com → F12 → Application → Local Storage → copy `access_token`.\n\n**Android (HTTPCanary):** intercept any Grab request → copy the value after `Authorization: Bearer `.\n\nThe token starts with `eyJ`.",
         "data": {
           "access_token": "Access token",
           "refresh_token": "Refresh token (optional)"
@@ -15,7 +12,7 @@
     },
     "error": {
       "cannot_connect": "Could not reach Grab servers. Check your internet connection.",
-      "invalid_token": "Token rejected by Grab. Copy the full value starting with eyJ with no extra spaces.",
+      "invalid_token": "Token rejected. Copy the full value starting with eyJ with no extra spaces.",
       "unknown": "Unexpected error."
     },
     "abort": {

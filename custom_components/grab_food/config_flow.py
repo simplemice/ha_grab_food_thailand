@@ -8,7 +8,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GrabApiError, GrabAuthError, GrabFoodApiClient
@@ -24,7 +24,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_TOKEN_SCHEMA = vol.Schema(
+STEP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACCESS_TOKEN): str,
         vol.Optional(CONF_REFRESH_TOKEN, default=""): str,
@@ -33,25 +33,17 @@ STEP_TOKEN_SCHEMA = vol.Schema(
 
 
 class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Grab Food Thailand."""
+    """Config flow for Grab Food Thailand — token only."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        """Initialize the config flow."""
+        """Initialize."""
         self._is_reauth: bool = False
         self._reauth_entry_id: str | None = None
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Entry point — skip straight to the token step."""
-        return await self.async_step_token(user_input)
-
-    async def async_step_token(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Accept an access token pasted from the browser or HTTPCanary."""
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
+        """Show the access-token form and validate on submit."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -59,7 +51,7 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
 
             if not self._is_reauth:
-                uid = f"grab_food_token_{access_token[:16]}"
+                uid = f"grab_food_{access_token[:20]}"
                 await self.async_set_unique_id(uid)
                 self._abort_if_unique_id_configured()
 
@@ -76,7 +68,7 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             except GrabAuthError:
                 errors["base"] = "invalid_token"
             except GrabApiError as err:
-                _LOGGER.warning("Token check API error (non-fatal): %s", err)
+                _LOGGER.warning("Token validation API error (non-fatal): %s", err)
             except Exception:
                 _LOGGER.exception("Unexpected error during token validation")
                 errors["base"] = "cannot_connect"
@@ -99,21 +91,16 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
                         data_updates=entry_data,
                     )
 
-                return self.async_create_entry(
-                    title="Grab Food",
-                    data=entry_data,
-                )
+                return self.async_create_entry(title="Grab Food", data=entry_data)
 
         return self.async_show_form(
-            step_id="token",
-            data_schema=STEP_TOKEN_SCHEMA,
+            step_id="user",
+            data_schema=STEP_SCHEMA,
             errors=errors,
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
-        """Re-auth flow — update the existing entry instead of creating a new one."""
+    async def async_step_reauth(self, entry_data: dict[str, Any]):
+        """Handle re-auth: update existing entry, never create a duplicate."""
         self._is_reauth = True
         self._reauth_entry_id = self.context["entry_id"]
-        return await self.async_step_token()
+        return await self.async_step_user()
