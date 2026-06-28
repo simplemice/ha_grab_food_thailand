@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.6] - 2026-06-28
+
+### fix: remove phone/OTP flow, fix config flow 500 error
+
+- Remove async_step_phone, async_step_otp and all OTP schemas — they
+  caused a 500 because newer HA validates async_step_* methods against
+  strings.json and those steps had no strings entries
+- Add required 'user' step to strings.json (HA needs it as the flow
+  entry-point declaration)
+- Remove unused CONF_OTP constant from const.py
+- Flow now goes directly user→token, no menu, no phone
+
+
 ## [1.0.5] - 2026-06-28
 
 ### fix autorization and other bugs
