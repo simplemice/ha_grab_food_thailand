@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.11] - 2026-06-28
+
+### docs: replace browser token method with HTTPCanary step-by-step guide
+
+
 ## [1.0.10] - 2026-06-28
 
 ### fix: handle API redirect and non-JSON response; don't block setup on API errors
