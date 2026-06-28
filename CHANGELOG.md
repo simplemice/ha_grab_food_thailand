@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.9] - 2026-06-28
+
+### fix: resolve 500 error caused by _reauth_entry_id property conflict
+
+In newer HA versions ConfigFlow defines _reauth_entry_id as a read-only
+property. Setting it in __init__ raised AttributeError which HA caught
+and returned as a 500 on config flow load.
+
+Fixes:
+- Remove __init__ entirely; use self.source == SOURCE_REAUTH instead
+  of custom _is_reauth flag, and self._get_reauth_entry() instead of
+  manually tracking _reauth_entry_id
+- Move DeviceInfo import in sensor.py from deprecated
+  homeassistant.helpers.entity to homeassistant.helpers.device_registry
+
+
 ## [1.0.8] - 2026-06-28
 
 ### fix autorization and other bugs
