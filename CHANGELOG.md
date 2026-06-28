@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.10] - 2026-06-28
+
+### fix: handle API redirect and non-JSON response; don't block setup on API errors
+
+- api.py: add allow_redirects=False to detect Grab API endpoint changes;
+  add _parse_json helper to raise a clear error on HTML/non-JSON responses
+- coordinator.py: on GrabApiError return empty data instead of UpdateFailed
+  so sensors stay available and setup succeeds even when API endpoint is wrong
+
+
 ## [1.0.9] - 2026-06-28
 
 ### fix: resolve 500 error caused by _reauth_entry_id property conflict
