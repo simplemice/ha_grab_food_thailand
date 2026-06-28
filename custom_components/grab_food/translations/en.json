@@ -2,19 +2,17 @@
   "config": {
     "step": {
       "token": {
-        "title": "Grab Food — Browser Token",
-        "description": "Open **[food.grab.com](https://food.grab.com)** in your browser and log in.\n\nThen press **F12** → **Application** tab → **Local Storage** → `https://food.grab.com` and copy the value of the `access_token` key.\n\nThe token is a long string starting with `eyJ…`.",
+        "title": "Grab Food — Access Token",
+        "description": "Paste your Grab access token below. You can get it from either source:\n\n**Browser (Chrome/Firefox):**\nOpen food.grab.com → log in → press F12 → Application → Local Storage → `https://food.grab.com` → copy `access_token`.\n\n**Android (HTTPCanary / Charles / mitmproxy):**\nOpen the Grab app → intercept any request → copy the value after `Authorization: Bearer ` in the request headers.\n\nThe token is a long string starting with `eyJ…`.",
         "data": {
-          "access_token": "Access token",
+          "access_token": "Access token (starts with eyJ…)",
           "refresh_token": "Refresh token (optional — leave blank if not available)"
         }
       }
     },
     "error": {
       "cannot_connect": "Could not reach Grab servers. Check your internet connection and try again.",
-      "invalid_token": "The token was rejected by Grab. Make sure you copied the full `access_token` value.",
-      "invalid_otp": "Invalid OTP code. Please try again.",
-      "otp_send_failed": "Grab rejected the OTP request. Check the phone number and country code.",
+      "invalid_token": "The token was rejected by Grab. Make sure you copied the full token value (starting with eyJ…) with no extra spaces.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
