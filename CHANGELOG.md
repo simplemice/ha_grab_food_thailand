@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.4] - 2026-06-28
+
+### fix autorization and other bugs
+
+### fix autorization and other bugs
+
+### fix autorization and other
+
+### fix request_otp and other
+
+### fix request_otp and other
+
+
 ## [1.0.3] - 2026-06-28
 
 ### Added
