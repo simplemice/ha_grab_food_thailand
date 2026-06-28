@@ -22,7 +22,8 @@
       }
     },
     "error": {
-      "otp_send_failed": "Failed to send OTP. Check the phone number and try again.",
+      "otp_send_failed": "Grab rejected the OTP request. Check the phone number and country code, then check the Home Assistant log for the full error from the API.",
+      "cannot_connect": "Could not reach Grab servers. Check your internet connection and try again.",
       "invalid_otp": "Invalid OTP code. Please try again.",
       "unknown": "An unexpected error occurred."
     },

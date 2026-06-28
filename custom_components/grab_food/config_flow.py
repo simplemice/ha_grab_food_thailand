@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import GrabAuthError, GrabFoodApiClient
+from .api import GrabApiError, GrabAuthError, GrabFoodApiClient
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_COUNTRY_CODE,
@@ -66,10 +66,13 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             session = async_get_clientsession(self.hass)
             self._client = GrabFoodApiClient(session)
 
-            if await self._client.request_otp(self._phone, self._country_code):
+            try:
+                await self._client.request_otp(self._phone, self._country_code)
                 return await self.async_step_otp()
-
-            errors["base"] = "otp_send_failed"
+            except GrabApiError:
+                errors["base"] = "otp_send_failed"
+            except GrabAuthError:
+                errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
@@ -86,7 +89,6 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             otp = user_input[CONF_OTP].strip()
-            assert self._client is not None
 
             if self._client is None:
                 errors["base"] = "unknown"
@@ -134,14 +136,22 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm re-auth and send a new OTP."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
             session = async_get_clientsession(self.hass)
             self._client = GrabFoodApiClient(session)
-            if await self._client.request_otp(self._phone, self._country_code):
+            try:
+                await self._client.request_otp(self._phone, self._country_code)
                 return await self.async_step_otp()
+            except GrabApiError:
+                errors["base"] = "otp_send_failed"
+            except GrabAuthError:
+                errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="reauth_confirm",
+            errors=errors,
             description_placeholders={
                 "phone": f"{self._country_code}{self._phone}",
             },

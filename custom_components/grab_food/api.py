@@ -61,30 +61,45 @@ class GrabFoodApiClient:
 
     # ── Auth flow ────────────────────────────────────────────────────────
 
-    async def request_otp(self, phone_number: str, country_code: str = "+66") -> bool:
-        """Request an OTP to the given phone number.
+    async def request_otp(self, phone_number: str, country_code: str = "+66") -> None:
+        """Request an OTP SMS to the given phone number.
 
-        Returns True if the OTP was sent successfully.
+        Raises GrabApiError when the server rejects the request.
+        Raises GrabAuthError on network / connection failure.
         """
         payload = {
             "method": "SMS",
             "countryCode": country_code,
             "phoneNumber": phone_number,
         }
+        _LOGGER.debug(
+            "Requesting OTP for %s%s → POST %s",
+            country_code,
+            phone_number,
+            GRAB_OTP_REQUEST,
+        )
         try:
             async with self._session.post(
                 GRAB_OTP_REQUEST,
                 json=payload,
                 headers=_COMMON_HEADERS,
+                timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
-                if resp.status == 200:
-                    return True
                 body = await resp.text()
-                _LOGGER.error("OTP request failed (%s): %s", resp.status, body)
-                return False
+                _LOGGER.debug("OTP response %s: %s", resp.status, body)
+                if resp.status == 200:
+                    return
+                _LOGGER.error(
+                    "OTP request rejected (HTTP %s) for %s%s: %s",
+                    resp.status,
+                    country_code,
+                    phone_number,
+                    body,
+                )
+                raise GrabApiError(f"HTTP {resp.status}: {body}")
         except aiohttp.ClientError as err:
-            _LOGGER.error("OTP request error: %s", err)
-            return False
+            _LOGGER.error("OTP network error for %s%s: %s", country_code, phone_number, err)
+            raise GrabAuthError(f"Network error: {err}") from err
 
     async def verify_otp(
         self,
