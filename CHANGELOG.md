@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.8] - 2026-06-28
+
+### fix autorization and other bugs
+
+
 ## [1.0.7] - 2026-06-28
 
 ### fix: collapse config flow to single user step, fix 500 error
