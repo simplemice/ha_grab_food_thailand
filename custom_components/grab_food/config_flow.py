@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import voluptuous as vol
@@ -37,6 +38,15 @@ STEP_OTP_SCHEMA = vol.Schema(
     }
 )
 
+STEP_TOKEN_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ACCESS_TOKEN): str,
+        vol.Optional(CONF_REFRESH_TOKEN, default=""): str,
+        vol.Optional(CONF_PHONE, default=""): str,
+        vol.Optional(CONF_COUNTRY_CODE, default=DEFAULT_COUNTRY_CODE): str,
+    }
+)
+
 
 class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Grab Food Thailand."""
@@ -49,17 +59,29 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
         self._country_code: str = DEFAULT_COUNTRY_CODE
         self._client: GrabFoodApiClient | None = None
 
+    # ── Entry point: choose auth method ──────────────────────────────────
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: Collect phone number and send OTP."""
+        """Show menu: OTP login or manual token."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["phone", "token"],
+        )
+
+    # ── OTP flow ─────────────────────────────────────────────────────────
+
+    async def async_step_phone(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step OTP-1: Collect phone number and send OTP."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             self._country_code = user_input[CONF_COUNTRY_CODE].strip()
             self._phone = user_input[CONF_PHONE].strip().lstrip("0")
 
-            # Check for duplicates
             await self.async_set_unique_id(f"grab_food_{self._country_code}{self._phone}")
             self._abort_if_unique_id_configured()
 
@@ -75,7 +97,7 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
-            step_id="user",
+            step_id="phone",
             data_schema=STEP_PHONE_SCHEMA,
             errors=errors,
             description_placeholders={"default_code": DEFAULT_COUNTRY_CODE},
@@ -84,7 +106,7 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_otp(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 2: Verify OTP and store tokens."""
+        """Step OTP-2: Verify OTP and store tokens."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -124,6 +146,68 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    # ── Manual token flow ─────────────────────────────────────────────────
+
+    async def async_step_token(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Alternative: paste access_token extracted from browser/app."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            access_token = user_input[CONF_ACCESS_TOKEN].strip()
+            refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
+            phone = user_input.get(CONF_PHONE, "").strip().lstrip("0")
+            country_code = user_input.get(CONF_COUNTRY_CODE, DEFAULT_COUNTRY_CODE).strip()
+
+            uid = f"grab_food_{country_code}{phone}" if phone else f"grab_food_token_{access_token[:16]}"
+            await self.async_set_unique_id(uid)
+            self._abort_if_unique_id_configured()
+
+            session = async_get_clientsession(self.hass)
+            client = GrabFoodApiClient(
+                session=session,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                # Set expiry far in the future; coordinator will refresh as needed
+                token_expiry=time.time() + 3600,
+            )
+
+            # Quick connectivity check
+            try:
+                await client.get_active_orders()
+            except GrabAuthError:
+                errors["base"] = "invalid_token"
+            except GrabApiError as err:
+                _LOGGER.warning("Token check API error (continuing anyway): %s", err)
+            except Exception:
+                errors["base"] = "cannot_connect"
+
+            if not errors:
+                title = (
+                    f"Grab Food ({country_code}{phone})"
+                    if phone
+                    else "Grab Food (token)"
+                )
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        CONF_PHONE: phone,
+                        CONF_COUNTRY_CODE: country_code,
+                        CONF_ACCESS_TOKEN: access_token,
+                        CONF_REFRESH_TOKEN: refresh_token,
+                        CONF_TOKEN_EXPIRY: client.token_expiry,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="token",
+            data_schema=STEP_TOKEN_SCHEMA,
+            errors=errors,
+        )
+
+    # ── Reauth ────────────────────────────────────────────────────────────
+
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
@@ -135,24 +219,9 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm re-auth and send a new OTP."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            session = async_get_clientsession(self.hass)
-            self._client = GrabFoodApiClient(session)
-            try:
-                await self._client.request_otp(self._phone, self._country_code)
-                return await self.async_step_otp()
-            except GrabApiError:
-                errors["base"] = "otp_send_failed"
-            except GrabAuthError:
-                errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
+        """Confirm re-auth: choose OTP or paste a new token."""
+        return self.async_show_menu(
             step_id="reauth_confirm",
-            errors=errors,
-            description_placeholders={
-                "phone": f"{self._country_code}{self._phone}",
-            },
+            menu_options=["phone", "token"],
+            description_placeholders={"phone": f"{self._country_code}{self._phone}"},
         )

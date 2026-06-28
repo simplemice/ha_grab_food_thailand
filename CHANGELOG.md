@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.3] - 2026-06-28
+
+### Added
+- Manual token authentication — new "Paste token from browser / app" option in the setup menu bypasses the OTP flow entirely
+- Auth method menu at setup start: choose between OTP or manual token
+- Reauth now also offers both methods
+- `invalid_token` error shown when a pasted token is rejected by Grab
+
+### Fixed
+- OTP flow diagnostic confirmed Grab API returns HTTP 400 for all request variations — the API requires an undocumented `clientId` from the official mobile app; the manual token path works around this
+- Removed leftover `assert` in OTP verify step
+
 ## [1.0.2] - 2026-06-28
 
 ### add License
