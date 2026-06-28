@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.2] - 2026-06-28
+
+### add License
+
+
 ## [1.0.1] - 2026-06-28
 
 ### Initial commit
