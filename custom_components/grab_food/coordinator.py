@@ -9,7 +9,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import GrabApiError, GrabAuthError, GrabFoodApiClient
 from .const import (
@@ -58,7 +58,10 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Tokens are invalid — trigger the reauth flow rather than retry.
             raise ConfigEntryAuthFailed(f"Authentication error: {err}") from err
         except GrabApiError as err:
-            raise UpdateFailed(f"API error: {err}") from err
+            # API unavailable or wrong endpoint — log and return empty data so
+            # setup doesn't fail and sensors remain available (showing idle state).
+            _LOGGER.warning("Grab API error (will retry): %s", err)
+            return self._empty_data()
 
         # Persist tokens after every successful call (they may have refreshed)
         await self._persist_tokens()

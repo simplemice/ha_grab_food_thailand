@@ -190,7 +190,14 @@ class GrabFoodApiClient:
                 url,
                 headers=self._auth_headers(),
                 params=params,
+                allow_redirects=False,
             ) as resp:
+                if resp.status in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("Location", "unknown")
+                    raise GrabApiError(
+                        f"API endpoint redirected to {location}. "
+                        "The Grab API URL may have changed — check const.py."
+                    )
                 if resp.status == 401:
                     # Token expired mid-request — refresh under lock, then retry once
                     if not self.refresh_token:
@@ -203,21 +210,33 @@ class GrabFoodApiClient:
                         url,
                         headers=self._auth_headers(),
                         params=params,
+                        allow_redirects=False,
                     ) as retry:
                         if retry.status != 200:
                             body = await retry.text()
                             raise GrabApiError(
                                 f"API GET {url} failed ({retry.status}): {body}"
                             )
-                        return await retry.json()
+                        return await self._parse_json(url, retry)
                 if resp.status != 200:
                     body = await resp.text()
                     raise GrabApiError(
                         f"API GET {url} failed ({resp.status}): {body}"
                     )
-                return await resp.json()
+                return await self._parse_json(url, resp)
         except aiohttp.ClientError as err:
             raise GrabApiError(f"API GET {url} error: {err}") from err
+
+    @staticmethod
+    async def _parse_json(url: str, resp: aiohttp.ClientResponse) -> dict[str, Any]:
+        """Parse JSON from response, raising GrabApiError on non-JSON content."""
+        content_type = resp.headers.get("Content-Type", "")
+        if "json" not in content_type:
+            body = await resp.text()
+            raise GrabApiError(
+                f"API GET {url} returned non-JSON ({content_type}): {body[:200]}"
+            )
+        return await resp.json()
 
     # ── Order data ───────────────────────────────────────────────────────
 
