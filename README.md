@@ -3,6 +3,7 @@
     <img src="screenshots/logo.png" alt="Grab Food Thailand" width="500">
   </a>
 </p>
+
 # Grab Food Thailand
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
