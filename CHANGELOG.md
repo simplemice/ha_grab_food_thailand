@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.15] - 2026-07-01
+
+### add readme logo
+
+
 ## [1.0.14] - 2026-06-28
 
 ### add screenshots
