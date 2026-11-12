@@ -22,7 +22,7 @@ Track your active Grab Food Thailand orders inside Home Assistant. Know when you
 
 | Sensor | What it shows |
 |--------|--------------|
-| **Order Status** | Current lifecycle state (placed → confirmed → preparing → delivering → delivered) |
+| **Order Status** | Current lifecycle state (placed → confirmed → preparing → delivering → delivered); original Grab value in the `raw_status` attribute |
 | **Restaurant** | Name of the restaurant |
 | **Order Total** | Price in THB |
 | **Estimated Delivery** | ETA as a time string or ISO timestamp |
@@ -36,7 +36,7 @@ Track your active Grab Food Thailand orders inside Home Assistant. Know when you
 
 ## Requirements
 
-- Home Assistant **2024.1** or newer
+- Home Assistant **2024.11** or newer
 - A **Grab account** with food orders in Thailand
 - Your Grab **access token** (see [Getting your token](#getting-your-token) below)
 
@@ -123,19 +123,13 @@ The integration authenticates using a bearer token from your Grab mobile app ses
 
 ---
 
-## Setup
+## After setup
 
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Grab Food Thailand**
-3. Paste your `access_token` into the **Access token** field
-4. Optionally paste your `refresh_token` if you have one (from HTTPCanary)
-5. Click **Submit**
-
-All 9 sensors appear under a single **Grab Food** device immediately after setup.
+All 9 sensors appear under a single **Grab Food** device immediately after setup. Each Grab account gets its own device, so you can add more than one account.
 
 ### Re-authentication
 
-When a token expires and no refresh token is available, Home Assistant shows a notification prompting you to re-authenticate. Open the integration, paste a fresh token, and all sensors resume normally.
+Home Assistant asks you to re-authenticate only when Grab actually rejects your token (and a refresh, if you provided a refresh token, also fails). The token's real expiry is read from the token itself, so a still-valid token is never discarded early. Short network problems or Grab outages do **not** trigger re-authentication — the integration just retries. When prompted, open the integration, paste a fresh token, and all sensors resume normally.
 
 ---
 
@@ -151,17 +145,17 @@ When a token expires and no refresh token is available, Home Assistant shows a n
 
 ```yaml
 alias: "Grab Food — picked up announcement"
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: sensor.grab_food_order_status
     to: picked_up
-action:
-  - service: tts.speak
+actions:
+  - action: tts.speak
     target:
       entity_id: media_player.living_room
     data:
       message: >
-        Your order from {{ states('sensor.grab_food_restaurant_name') }}
+        Your order from {{ states('sensor.grab_food_restaurant') }}
         has been picked up. ETA {{ states('sensor.grab_food_estimated_delivery') }}.
 ```
 
@@ -169,40 +163,43 @@ action:
 
 ```yaml
 alias: "Grab Food — delivered notification"
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: sensor.grab_food_order_status
     to: delivered
-action:
-  - service: notify.mobile_app_your_phone
+actions:
+  - action: notify.mobile_app_your_phone
     data:
       title: "🍔 Food delivered!"
       message: >
-        {{ states('sensor.grab_food_restaurant_name') }} ·
+        {{ states('sensor.grab_food_restaurant') }} ·
         {{ states('sensor.grab_food_order_total') }} THB ·
-        {{ states('sensor.grab_food_item_count') }} items
+        {{ states('sensor.grab_food_items_ordered') }} items
 ```
 
-### Turn on porch light when driver is close
+### Turn on porch light when the driver is close
 
-Combine the driver GPS attributes with a `proximity` helper or a `template` sensor to detect when the driver is within a certain distance:
+The driver's position is in the `latitude` / `longitude` attributes of `sensor.grab_food_driver`. Use a template trigger with HA's built-in `distance()` (measured from your home location):
 
 ```yaml
 alias: "Grab Food — light on when driver nearby"
-trigger:
-  - platform: numeric_state
-    entity_id: sensor.grab_food_driver_name   # lat/lon in attributes
-    attribute: latitude
-    # Use a proximity helper for real distance check
-condition:
+triggers:
+  - trigger: template
+    value_template: >
+      {% set lat = state_attr('sensor.grab_food_driver', 'latitude') %}
+      {% set lon = state_attr('sensor.grab_food_driver', 'longitude') %}
+      {{ lat is not none and lon is not none and distance(lat, lon) < 0.3 }}
+conditions:
   - condition: state
     entity_id: sensor.grab_food_order_status
     state: delivering
-action:
-  - service: light.turn_on
+actions:
+  - action: light.turn_on
     target:
       entity_id: light.porch
 ```
+
+`distance()` returns kilometres, so `0.3` is 300 m.
 
 ### Dashboard card — live order summary
 
@@ -211,11 +208,11 @@ type: entities
 title: Grab Food Order
 entities:
   - entity: sensor.grab_food_order_status
-  - entity: sensor.grab_food_restaurant_name
+  - entity: sensor.grab_food_restaurant
   - entity: sensor.grab_food_estimated_delivery
-  - entity: sensor.grab_food_driver_name
+  - entity: sensor.grab_food_driver
   - entity: sensor.grab_food_order_total
-  - entity: sensor.grab_food_item_count
+  - entity: sensor.grab_food_items_ordered
 ```
 
 ### Dashboard card — driver on a map
@@ -223,11 +220,10 @@ entities:
 ```yaml
 type: map
 entities:
-  - entity: sensor.grab_food_driver_name
-    label_mode: state
+  - entity: sensor.grab_food_driver
 ```
 
-> The driver's current GPS position is stored in the `latitude` and `longitude` attributes of `sensor.grab_food_driver_name`. The map card picks these up automatically when `label_mode` is set.
+> The driver's current GPS position is stored in the `latitude` and `longitude` attributes of `sensor.grab_food_driver`. The map card picks these up automatically.
 
 ---
 
@@ -244,6 +240,7 @@ entities:
 | `delivering` | Driver is on the way |
 | `delivered` | Order delivered successfully |
 | `cancelled` | Order was cancelled |
+| `unknown` | Grab returned a state this integration does not recognise. The original value is in the `raw_status` attribute of the Order Status sensor — please open an issue so it can be mapped |
 
 ---
 
@@ -261,7 +258,7 @@ Polling interval adapts automatically:
 - **30 seconds** — while an order status is active
 - **5 minutes** — when no order is in progress
 
-If the access token expires the coordinator calls the Grab refresh endpoint transparently. If that also fails, HA triggers the reauth flow and pauses data updates until you provide a fresh token.
+If you provided a refresh token, the access token is renewed transparently shortly before it expires (or on a 401) and the new tokens are saved to the config entry immediately. If Grab rejects the token, HA triggers the reauth flow and pauses data updates until you provide a fresh token.
 
 ---
 
@@ -270,7 +267,9 @@ If the access token expires the coordinator calls the Grab refresh endpoint tran
 - **Unofficial API** — this integration relies on Grab's internal mobile API. Endpoints, field names, and authentication flows can change without notice.
 - **Thailand only** — tested against the Thai Grab region. Other countries may use different API endpoints.
 - **One active order** — Grab allows only one active food order per account; the integration always tracks the first one returned.
-- **Token lifespan** — browser tokens typically expire in hours. HTTPCanary-sourced tokens with a refresh token can last much longer.
+- **Token lifespan** — the expiry is read from the token itself. Without a refresh token you must paste a new token when it expires; with one, the integration renews itself.
+- **Token storage** — tokens are stored in Home Assistant's config entry (`.storage`), like other integrations' credentials. Treat backups accordingly and never share them or paste them in issues.
+- **Terms of service** — the integration sends requests that mimic the Grab mobile app. Use it at your own risk; Grab may change or block this at any time.
 - **Rate limits** — Grab may throttle aggressive polling. The defaults (30 s / 5 min) are deliberately conservative.
 
 ---
@@ -281,7 +280,7 @@ Bug reports and pull requests are welcome.
 
 1. **Fork** the repository and create a branch from `main`
 2. Make your changes — keep them focused; one fix or feature per PR
-3. Test manually with a real Grab account or adapt the existing test scaffold in the repo
+3. Run the tests: `pip install pytest-homeassistant-custom-component && pytest` (add or update tests for your change)
 4. Open a pull request with a clear description of what changed and why
 
 If you discover updated Grab API endpoints (e.g. via HTTPCanary), please open an issue or PR updating `custom_components/grab_food/const.py` — that is the single source of truth for all API URLs.
