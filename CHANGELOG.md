@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.17] - 2026-11-12
+
+### update integration
+
+
 ## [1.0.16] - 2026-07-01
 
 ### fix <br> error
