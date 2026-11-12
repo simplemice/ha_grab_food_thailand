@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -13,8 +16,6 @@ from .const import (
     GRAB_ORDER_DETAIL,
     GRAB_ORDERS_ACTIVE,
     GRAB_ORDERS_HISTORY,
-    GRAB_OTP_REQUEST,
-    GRAB_OTP_VERIFY,
     GRAB_TOKEN_REFRESH,
 )
 
@@ -30,6 +31,26 @@ _COMMON_HEADERS = {
     "X-Country-Code": "TH",
     "X-Locale": "en_TH",
 }
+
+
+_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+
+def jwt_claims(token: str | None) -> dict[str, Any]:
+    """Return JWT payload claims, or {} if the token is not a decodable JWT."""
+    try:
+        payload = (token or "").split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        return claims if isinstance(claims, dict) else {}
+    except (IndexError, ValueError, TypeError):
+        return {}
+
+
+def jwt_expiry(token: str | None) -> float:
+    """Return the JWT `exp` claim as epoch seconds, or 0.0 if unknown."""
+    exp = jwt_claims(token).get("exp")
+    return float(exp) if isinstance(exp, (int, float)) else 0.0
 
 
 class GrabAuthError(Exception):
@@ -54,88 +75,32 @@ class GrabFoodApiClient:
         self._session = session
         self.access_token = access_token
         self.refresh_token = refresh_token
-        self.token_expiry = token_expiry or 0.0
+        # A real JWT exp beats any stored guess; 0.0 means "unknown".
+        self.token_expiry = jwt_expiry(access_token) or token_expiry or 0.0
+        self.on_tokens_updated: Callable[[], None] | None = None
         self._lock = asyncio.Lock()
 
-    # ── Auth flow ────────────────────────────────────────────────────────
+    # ── Token handling ───────────────────────────────────────────────────
 
-    async def request_otp(self, phone_number: str, country_code: str = "+66") -> None:
-        """Request an OTP SMS to the given phone number.
-
-        Raises GrabApiError when the server rejects the request.
-        Raises GrabAuthError on network / connection failure.
-        """
-        payload = {
-            "method": "SMS",
-            "countryCode": country_code,
-            "phoneNumber": phone_number,
-        }
-        _LOGGER.debug(
-            "Requesting OTP for %s%s → POST %s",
-            country_code,
-            phone_number,
-            GRAB_OTP_REQUEST,
-        )
-        try:
-            async with self._session.post(
-                GRAB_OTP_REQUEST,
-                json=payload,
-                headers=_COMMON_HEADERS,
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                body = await resp.text()
-                _LOGGER.debug("OTP response %s: %s", resp.status, body)
-                if resp.status == 200:
-                    return
-                _LOGGER.error(
-                    "OTP request rejected (HTTP %s) for %s%s: %s",
-                    resp.status,
-                    country_code,
-                    phone_number,
-                    body,
-                )
-                raise GrabApiError(f"HTTP {resp.status}: {body}")
-        except aiohttp.ClientError as err:
-            _LOGGER.error("OTP network error for %s%s: %s", country_code, phone_number, err)
-            raise GrabAuthError(f"Network error: {err}") from err
-
-    async def verify_otp(
-        self,
-        phone_number: str,
-        otp: str,
-        country_code: str = "+66",
-    ) -> dict[str, Any]:
-        """Verify the OTP and return tokens.
-
-        Returns dict with access_token, refresh_token, expires_in on success.
-        Raises GrabAuthError on failure.
-        """
-        payload = {
-            "method": "SMS",
-            "countryCode": country_code,
-            "phoneNumber": phone_number,
-            "otp": otp,
-        }
-        try:
-            async with self._session.post(
-                GRAB_OTP_VERIFY,
-                json=payload,
-                headers=_COMMON_HEADERS,
-            ) as resp:
-                data = await resp.json()
-                if resp.status == 200 and "access_token" in data:
-                    self.access_token = data["access_token"]
-                    self.refresh_token = data.get("refresh_token", "")
-                    self.token_expiry = time.time() + data.get("expires_in", 3600)
-                    return data
-                raise GrabAuthError(
-                    f"OTP verification failed ({resp.status}): {data}"
-                )
-        except aiohttp.ClientError as err:
-            raise GrabAuthError(f"OTP verification error: {err}") from err
+    def _apply_token_response(self, data: dict[str, Any]) -> None:
+        """Store tokens from a refresh response and notify the owner."""
+        self.access_token = data["access_token"]
+        self.refresh_token = data.get("refresh_token") or self.refresh_token
+        jwt_exp = jwt_expiry(self.access_token)
+        self.token_expiry = jwt_exp or (time.time() + float(data.get("expires_in", 3600)))
+        if self.on_tokens_updated is not None:
+            try:
+                self.on_tokens_updated()
+            except Exception:  # noqa: BLE001 - never break a request over persistence
+                _LOGGER.exception("Failed to persist refreshed tokens")
 
     async def _refresh_access_token(self) -> None:
-        """Refresh the access token using the refresh token."""
+        """Refresh the access token using the refresh token.
+
+        Only a definitive rejection by Grab raises GrabAuthError (which starts
+        the reauth flow). Network errors, timeouts and 5xx are GrabApiError so
+        a transient problem never asks the user for a new token.
+        """
         if not self.refresh_token:
             raise GrabAuthError("No refresh token available")
 
@@ -148,29 +113,34 @@ class GrabFoodApiClient:
                 GRAB_TOKEN_REFRESH,
                 json=payload,
                 headers=_COMMON_HEADERS,
+                timeout=_TIMEOUT,
             ) as resp:
+                status = resp.status
+                if status in (400, 401, 403):
+                    raise GrabAuthError(f"Token refresh rejected (HTTP {status})")
+                if status != 200:
+                    raise GrabApiError(f"Token refresh failed (HTTP {status})")
                 data = await resp.json()
-                if resp.status == 200 and "access_token" in data:
-                    self.access_token = data["access_token"]
-                    self.refresh_token = data.get("refresh_token", self.refresh_token)
-                    self.token_expiry = time.time() + data.get("expires_in", 3600)
-                    _LOGGER.debug("Token refreshed successfully")
-                    return
-                raise GrabAuthError(
-                    f"Token refresh failed ({resp.status}): {data}"
-                )
-        except aiohttp.ClientError as err:
-            raise GrabAuthError(f"Token refresh error: {err}") from err
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise GrabApiError(f"Token refresh error: {err!r}") from err
+
+        if not isinstance(data, dict) or "access_token" not in data:
+            raise GrabApiError("Token refresh returned no access_token")
+        self._apply_token_response(data)
+        _LOGGER.debug("Token refreshed successfully")
 
     async def _ensure_token(self) -> None:
-        """Ensure the access token is valid, refreshing if needed."""
+        """Refresh proactively only when expiry is known and a refresh token exists.
+
+        Without a refresh token (or with unknown expiry) the request is simply
+        sent; a 401 then decides whether the token is really dead.
+        """
         async with self._lock:
-            if time.time() >= (self.token_expiry - 60):
-                if not self.refresh_token:
-                    raise GrabAuthError(
-                        "Access token expired and no refresh token is available. "
-                        "Please re-authenticate via the integration settings."
-                    )
+            if (
+                self.refresh_token
+                and self.token_expiry
+                and time.time() >= self.token_expiry - 60
+            ):
                 await self._refresh_access_token()
 
     def _auth_headers(self) -> dict[str, str]:
@@ -182,15 +152,15 @@ class GrabFoodApiClient:
 
     # ── API requests ─────────────────────────────────────────────────────
 
-    async def _api_get(self, url: str, params: dict | None = None) -> dict[str, Any]:
-        """Authenticated GET request."""
-        await self._ensure_token()
+    async def _fetch(self, url: str, params: dict | None) -> tuple[int, Any]:
+        """Single GET. Returns (401, None) on 401, parsed JSON on 200."""
         try:
             async with self._session.get(
                 url,
                 headers=self._auth_headers(),
                 params=params,
                 allow_redirects=False,
+                timeout=_TIMEOUT,
             ) as resp:
                 if resp.status in (301, 302, 303, 307, 308):
                     location = resp.headers.get("Location", "unknown")
@@ -199,33 +169,34 @@ class GrabFoodApiClient:
                         "The Grab API URL may have changed — check const.py."
                     )
                 if resp.status == 401:
-                    # Token expired mid-request — refresh under lock, then retry once
-                    if not self.refresh_token:
-                        raise GrabAuthError(
-                            "Token rejected (401) and no refresh token available"
-                        )
-                    async with self._lock:
-                        await self._refresh_access_token()
-                    async with self._session.get(
-                        url,
-                        headers=self._auth_headers(),
-                        params=params,
-                        allow_redirects=False,
-                    ) as retry:
-                        if retry.status != 200:
-                            body = await retry.text()
-                            raise GrabApiError(
-                                f"API GET {url} failed ({retry.status}): {body}"
-                            )
-                        return await self._parse_json(url, retry)
+                    return 401, None
                 if resp.status != 200:
                     body = await resp.text()
                     raise GrabApiError(
-                        f"API GET {url} failed ({resp.status}): {body}"
+                        f"API GET {url} failed ({resp.status}): {body[:200]}"
                     )
-                return await self._parse_json(url, resp)
-        except aiohttp.ClientError as err:
-            raise GrabApiError(f"API GET {url} error: {err}") from err
+                return 200, await self._parse_json(url, resp)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise GrabApiError(f"API GET {url} error: {err!r}") from err
+
+    async def _api_get(self, url: str, params: dict | None = None) -> dict[str, Any]:
+        """Authenticated GET with one refresh-and-retry on 401."""
+        await self._ensure_token()
+        used_token = self.access_token
+        status, data = await self._fetch(url, params)
+        if status != 401:
+            return data
+
+        if not self.refresh_token:
+            raise GrabAuthError("Token rejected (401) and no refresh token available")
+        async with self._lock:
+            # Another task may already have refreshed while we waited.
+            if self.access_token == used_token:
+                await self._refresh_access_token()
+        status, data = await self._fetch(url, params)
+        if status == 401:
+            raise GrabAuthError("Token rejected (401) even after refresh")
+        return data
 
     @staticmethod
     async def _parse_json(url: str, resp: aiohttp.ClientResponse) -> dict[str, Any]:

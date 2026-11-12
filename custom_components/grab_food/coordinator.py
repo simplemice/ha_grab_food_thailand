@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     SCAN_INTERVAL_ACTIVE,
     SCAN_INTERVAL_IDLE,
+    STATE_MAP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +50,9 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
         self.config_entry = entry
+        # Save rotated tokens the moment they change, not after the next
+        # successful poll (a failed poll would otherwise lose them).
+        client.on_tokens_updated = self._persist_tokens
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the Grab API."""
@@ -64,22 +68,26 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._empty_data()
 
         # Persist tokens after every successful call (they may have refreshed)
-        await self._persist_tokens()
+        self._persist_tokens()
 
         if not active_orders:
             self.update_interval = SCAN_INTERVAL_IDLE
             return self._empty_data()
 
         self.update_interval = SCAN_INTERVAL_ACTIVE
-        order = active_orders[0]
+        order = active_orders[0] if isinstance(active_orders[0], dict) else {}
 
         order_id = order.get("orderID") or order.get("id") or order.get("order_id", "")
         detail: dict[str, Any] = {}
         if order_id:
             try:
                 detail = await self.client.get_order_detail(str(order_id))
+            except GrabAuthError as err:
+                raise ConfigEntryAuthFailed(f"Authentication error: {err}") from err
             except GrabApiError:
                 _LOGGER.debug("Could not fetch detail for order %s", order_id)
+            if not isinstance(detail, dict):
+                detail = {}
 
         return self._parse_order(order, detail)
 
@@ -93,12 +101,18 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Normalise order data into a flat dict for sensors."""
         merged = {**order, **detail}
 
-        status = (
+        status_raw = (
             merged.get("state")
             or merged.get("status")
             or merged.get("orderState")
-            or "unknown"
+            or ""
         )
+        status_key = (
+            str(status_raw).strip().lower().replace(" ", "_").replace("-", "_")
+            if isinstance(status_raw, (str, int, float))
+            else ""
+        )
+        status = STATE_MAP.get(status_key, "unknown")
 
         # Restaurant — guard against API returning a plain string instead of dict
         restaurant_raw = merged.get("restaurant") or merged.get("merchant")
@@ -140,8 +154,11 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 or ""
             )
             loc_raw = driver_raw.get("location") or driver_raw.get("coordinates") or {}
-            driver_lat = loc_raw.get("latitude") or loc_raw.get("lat") if isinstance(loc_raw, dict) else None
-            driver_lng = loc_raw.get("longitude") or loc_raw.get("lng") if isinstance(loc_raw, dict) else None
+            if isinstance(loc_raw, dict):
+                driver_lat = self._first(loc_raw.get("latitude"), loc_raw.get("lat"))
+                driver_lng = self._first(loc_raw.get("longitude"), loc_raw.get("lng"))
+            else:
+                driver_lat = driver_lng = None
         else:
             driver_name = ""
             driver_plate = ""
@@ -150,13 +167,17 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Items
         items = merged.get("items") or merged.get("orderItems") or []
-        item_count = len(items) if isinstance(items, list) else 0
+        item_list = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+        item_count = len(item_list)
         item_names = []
-        for item in (items if isinstance(items, list) else []):
+        for item in item_list:
             name = item.get("name") or item.get("itemName") or ""
-            qty = item.get("quantity") or item.get("qty") or 1
+            try:
+                qty = int(float(item.get("quantity") or item.get("qty") or 1))
+            except (TypeError, ValueError):
+                qty = 1
             if name:
-                item_names.append(f"{qty}× {name}" if qty > 1 else name)
+                item_names.append(f"{qty}× {name}" if qty > 1 else str(name))
 
         # Delivery address — fix operator-precedence bug in original and guard types
         address_raw = merged.get("deliveryAddress") or merged.get("address")
@@ -181,7 +202,8 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {
             "has_active_order": True,
             "order_id": str(order_id),
-            "status": str(status).lower().replace(" ", "_"),
+            "status": status,
+            "status_raw": str(status_raw) if status_raw != "" else None,
             "restaurant_name": restaurant_name,
             "total": total,
             "currency": merged.get("currency", "THB"),
@@ -203,6 +225,7 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "has_active_order": False,
             "order_id": "",
             "status": "no_active_order",
+            "status_raw": None,
             "restaurant_name": "",
             "total": None,
             "currency": "THB",
@@ -226,11 +249,20 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
-            return float(value.get("amount", 0))
+            value = value.get("amount")
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
         try:
             return float(str(value).replace(",", "").replace("฿", "").strip())
         except (ValueError, TypeError):
             return None
+
+    @staticmethod
+    def _first(*values: Any) -> Any:
+        """Return the first value that is not None (keeps 0)."""
+        return next((v for v in values if v is not None), None)
 
     @staticmethod
     def _parse_eta(value: Any) -> str | None:
@@ -249,7 +281,7 @@ class GrabFoodCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ── Token persistence ────────────────────────────────────────────────
 
-    async def _persist_tokens(self) -> None:
+    def _persist_tokens(self) -> None:
         """Save current tokens back into the config entry."""
         tokens = self.client.export_tokens()
         current = dict(self.config_entry.data)

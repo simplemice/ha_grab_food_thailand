@@ -33,17 +33,34 @@
           "picked_up": "Picked Up",
           "delivering": "Delivering",
           "delivered": "Delivered",
-          "cancelled": "Cancelled"
+          "cancelled": "Cancelled",
+          "unknown": "Unknown"
         }
       },
-      "restaurant_name": { "name": "Restaurant" },
-      "order_total": { "name": "Order Total" },
-      "estimated_delivery": { "name": "Estimated Delivery" },
-      "driver_name": { "name": "Driver" },
-      "driver_plate": { "name": "Driver Plate" },
-      "item_count": { "name": "Items Ordered" },
-      "order_id": { "name": "Order ID" },
-      "delivery_address": { "name": "Delivery Address" }
+      "restaurant_name": {
+        "name": "Restaurant"
+      },
+      "order_total": {
+        "name": "Order Total"
+      },
+      "estimated_delivery": {
+        "name": "Estimated Delivery"
+      },
+      "driver_name": {
+        "name": "Driver"
+      },
+      "driver_plate": {
+        "name": "Driver Plate"
+      },
+      "item_count": {
+        "name": "Items Ordered"
+      },
+      "order_id": {
+        "name": "Order ID"
+      },
+      "delivery_address": {
+        "name": "Delivery Address"
+      }
     }
   }
 }

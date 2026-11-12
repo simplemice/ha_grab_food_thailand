@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from typing import Any
@@ -11,7 +12,13 @@ import voluptuous as vol
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import GrabApiError, GrabAuthError, GrabFoodApiClient
+from .api import (
+    GrabApiError,
+    GrabAuthError,
+    GrabFoodApiClient,
+    jwt_claims,
+    jwt_expiry,
+)
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
@@ -43,8 +50,20 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
             access_token = user_input[CONF_ACCESS_TOKEN].strip()
             refresh_token = user_input.get(CONF_REFRESH_TOKEN, "").strip()
 
-            if not is_reauth:
-                uid = f"grab_food_{access_token[:20]}"
+            # All JWTs share the same first characters (the header), so the
+            # old token[:20] id collided for every account. Use the account
+            # id claim, falling back to a hash of the whole token.
+            expiry = jwt_expiry(access_token)
+            if expiry and expiry < time.time() and not refresh_token:
+                errors["base"] = "invalid_token"
+
+            if not is_reauth and not errors:
+                sub = jwt_claims(access_token).get("sub")
+                uid = (
+                    f"grab_food_{sub}"
+                    if sub
+                    else "grab_food_" + hashlib.sha256(access_token.encode()).hexdigest()[:16]
+                )
                 await self.async_set_unique_id(uid)
                 self._abort_if_unique_id_configured()
 
@@ -53,18 +72,19 @@ class GrabFoodConfigFlow(ConfigFlow, domain=DOMAIN):
                 session=session,
                 access_token=access_token,
                 refresh_token=refresh_token,
-                token_expiry=time.time() + 3600,
+                token_expiry=expiry,  # 0.0 = unknown, never a made-up 1h guess
             )
 
-            try:
-                await client.get_active_orders()
-            except GrabAuthError:
-                errors["base"] = "invalid_token"
-            except GrabApiError as err:
-                _LOGGER.warning("Token validation API error (non-fatal): %s", err)
-            except Exception:
-                _LOGGER.exception("Unexpected error during token validation")
-                errors["base"] = "cannot_connect"
+            if not errors:
+                try:
+                    await client.get_active_orders()
+                except GrabAuthError:
+                    errors["base"] = "invalid_token"
+                except GrabApiError as err:
+                    _LOGGER.warning("Token validation API error (non-fatal): %s", err)
+                except Exception:
+                    _LOGGER.exception("Unexpected error during token validation")
+                    errors["base"] = "cannot_connect"
 
             if not errors:
                 entry_data = {

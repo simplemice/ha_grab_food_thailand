@@ -54,7 +54,42 @@ ORDER_STATES = [
     "delivering",
     "delivered",
     "cancelled",
+    "unknown",
 ]
+
+# Normalised API state -> sensor option. Anything not listed becomes "unknown".
+STATE_MAP = {
+    "no_active_order": "no_active_order",
+    "placed": "placed",
+    "order_placed": "placed",
+    "created": "placed",
+    "pending": "placed",
+    "confirmed": "confirmed",
+    "accepted": "confirmed",
+    "order_confirmed": "confirmed",
+    "preparing": "preparing",
+    "order_preparing": "preparing",
+    "cooking": "preparing",
+    "ready": "preparing",
+    "allocating": "preparing",
+    "driver_assigned": "driver_assigned",
+    "allocated": "driver_assigned",
+    "driver_allocated": "driver_assigned",
+    "driver_arrived": "driver_assigned",
+    "picked_up": "picked_up",
+    "pickedup": "picked_up",
+    "delivering": "delivering",
+    "on_the_way": "delivering",
+    "in_delivery": "delivering",
+    "in_transit": "delivering",
+    "delivered": "delivered",
+    "completed": "delivered",
+    "complete": "delivered",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "failed": "cancelled",
+    "rejected": "cancelled",
+}
 
 # ── Attribution ──────────────────────────────────────────────────────────────
 ATTRIBUTION = "Data provided by Grab Food Thailand"

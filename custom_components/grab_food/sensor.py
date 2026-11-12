@@ -36,8 +36,13 @@ SENSOR_DESCRIPTIONS: tuple[GrabFoodSensorEntityDescription, ...] = (
         icon="mdi:moped",
         device_class=SensorDeviceClass.ENUM,
         options=ORDER_STATES,
-        value_fn=lambda d: d.get("status", "no_active_order"),
-        extra_attrs_fn=lambda d: {"order_id": d.get("order_id", "")},
+        value_fn=lambda d: (
+            d.get("status") if d.get("status") in ORDER_STATES else "unknown"
+        ),
+        extra_attrs_fn=lambda d: {
+            "order_id": d.get("order_id", ""),
+            "raw_status": d.get("status_raw"),
+        },
     ),
     GrabFoodSensorEntityDescription(
         key="restaurant_name",
