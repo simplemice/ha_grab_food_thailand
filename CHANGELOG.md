@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.0.18] - 2026-11-12
+
+### fix: token persistence, expiry handling and sensor status mapping
+
+### fix: token persistence and expiry handling
+
+- Read the real expiry from the token's JWT `exp` claim instead of assuming
+  1 hour. Tokens without a refresh token no longer trigger re-authentication
+  after an hour while still valid.
+- Save refreshed tokens immediately, so a rotated refresh token is not lost
+  when the poll that follows fails.
+- Network errors, timeouts and server errors during token refresh no longer
+  start re-authentication; only a rejection from Grab does.
+- Add request timeouts and handle `TimeoutError` in API calls.
+- Treat a 401 after a successful refresh as an authentication error, and
+  handle authentication errors from the order detail call.
+- Config flow: derive the unique ID from the token's `sub` claim (or a hash
+  of the token) so multiple accounts can be added; reject expired tokens
+  without a refresh token.
+
+### fix: sensor status mapping and parser robustness
+
+- Order Status maps raw API states (e.g. `ON_THE_WAY`, `COMPLETED`,
+  `CANCELED`) to known states and shows `unknown` for anything else, instead
+  of erroring. The raw value is exposed in the `raw_status` attribute.
+- Parser no longer crashes on string quantities, non-dict items or
+  non-numeric prices, and keeps driver coordinates equal to 0.
+
+### chore
+
+- Remove unused OTP code and its debug logging of phone numbers.
+- Add test suite (pytest) and `.gitignore`; fix broken README sentence.
+
+
 ## [1.0.17] - 2026-11-12
 
 ### update integration
