@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.19] - 2026-11-12
+
+### update readme
+
+
 ## [1.0.18] - 2026-11-12
 
 ### fix: token persistence, expiry handling and sensor status mapping
